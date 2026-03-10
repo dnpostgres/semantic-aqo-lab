@@ -26,12 +26,12 @@ echo ""
 echo "📝 Step 2: Creating test tables for JOIN operations..."
 $PSQL $DB << 'EOF'
 -- Drop existing test tables
-DROP TABLE IF EXISTS nce_orders CASCADE;
-DROP TABLE IF EXISTS nce_customers CASCADE;
-DROP TABLE IF EXISTS nce_products CASCADE;
+DROP TABLE IF EXISTS orders CASCADE;
+DROP TABLE IF EXISTS customers CASCADE;
+DROP TABLE IF EXISTS products CASCADE;
 
 -- Create customers table
-CREATE TABLE nce_customers (
+CREATE TABLE customers (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100),
     email VARCHAR(100),
@@ -40,7 +40,7 @@ CREATE TABLE nce_customers (
 );
 
 -- Create products table
-CREATE TABLE nce_products (
+CREATE TABLE products (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100),
     category VARCHAR(50),
@@ -49,10 +49,10 @@ CREATE TABLE nce_products (
 );
 
 -- Create orders table
-CREATE TABLE nce_orders (
+CREATE TABLE orders (
     id SERIAL PRIMARY KEY,
-    customer_id INT REFERENCES nce_customers(id),
-    product_id INT REFERENCES nce_products(id),
+    customer_id INT REFERENCES customers(id),
+    product_id INT REFERENCES products(id),
     quantity INT,
     total_price DECIMAL(10,2),
     order_date DATE,
@@ -60,14 +60,14 @@ CREATE TABLE nce_orders (
 );
 
 -- Insert sample data
-INSERT INTO nce_customers (name, email, city)
+INSERT INTO customers (name, email, city)
 SELECT 
     'Customer_' || i,
     'customer' || i || '@example.com',
     (ARRAY['Hanoi', 'HCMC', 'Danang', 'Haiphong', 'Cantho'])[1 + (random() * 4)::int]
 FROM generate_series(1, 100) i;
 
-INSERT INTO nce_products (name, category, price, stock)
+INSERT INTO products (name, category, price, stock)
 SELECT 
     'Product_' || i,
     (ARRAY['Electronics', 'Clothing', 'Food', 'Books', 'Sports'])[1 + (random() * 4)::int],
@@ -75,7 +75,7 @@ SELECT
     (random() * 100)::int
 FROM generate_series(1, 50) i;
 
-INSERT INTO nce_orders (customer_id, product_id, quantity, total_price, order_date, status)
+INSERT INTO orders (customer_id, product_id, quantity, total_price, order_date, status)
 SELECT 
     (random() * 99 + 1)::int,
     (random() * 49 + 1)::int,
@@ -86,16 +86,16 @@ SELECT
 FROM generate_series(1, 500);
 
 -- Create indexes
-CREATE INDEX idx_nce_orders_customer ON nce_orders(customer_id);
-CREATE INDEX idx_nce_orders_product ON nce_orders(product_id);
-CREATE INDEX idx_nce_orders_date ON nce_orders(order_date);
-CREATE INDEX idx_nce_customers_city ON nce_customers(city);
-CREATE INDEX idx_nce_products_category ON nce_products(category);
+CREATE INDEX idx_orders_customer ON orders(customer_id);
+CREATE INDEX idx_orders_product ON orders(product_id);
+CREATE INDEX idx_orders_date ON orders(order_date);
+CREATE INDEX idx_customers_city ON customers(city);
+CREATE INDEX idx_products_category ON products(category);
 
 -- Analyze tables
-ANALYZE nce_customers;
-ANALYZE nce_products;
-ANALYZE nce_orders;
+ANALYZE customers;
+ANALYZE products;
+ANALYZE orders;
 EOF
 echo "✅ Test tables created"
 
@@ -117,40 +117,40 @@ SET aqo.nce_enabled = 'on';  -- Enable Node Context Extractor
 -- Query 1: Simple JOIN
 EXPLAIN ANALYZE 
 SELECT c.name, o.total_price, o.order_date
-FROM nce_orders o
-JOIN nce_customers c ON o.customer_id = c.id
+FROM orders o
+JOIN customers c ON o.customer_id = c.id
 WHERE o.status = 'completed';
 
 -- Query 2: Multiple JOINs
 EXPLAIN ANALYZE
 SELECT c.name, p.name as product, o.quantity, o.total_price
-FROM nce_orders o
-JOIN nce_customers c ON o.customer_id = c.id
-JOIN nce_products p ON o.product_id = p.id
+FROM orders o
+JOIN customers c ON o.customer_id = c.id
+JOIN products p ON o.product_id = p.id
 WHERE c.city = 'Hanoi' AND p.category = 'Electronics';
 
 -- Query 3: Aggregation with JOIN
 EXPLAIN ANALYZE
 SELECT c.city, COUNT(*) as order_count, SUM(o.total_price) as total_revenue
-FROM nce_orders o
-JOIN nce_customers c ON o.customer_id = c.id
+FROM orders o
+JOIN customers c ON o.customer_id = c.id
 WHERE o.order_date > CURRENT_DATE - 90
 GROUP BY c.city;
 
 -- Query 4: Subquery
 EXPLAIN ANALYZE
-SELECT * FROM nce_customers c
+SELECT * FROM customers c
 WHERE c.id IN (
-    SELECT customer_id FROM nce_orders 
+    SELECT customer_id FROM orders 
     WHERE total_price > 1000
 );
 
 -- Query 5: Complex JOIN with filters
 EXPLAIN ANALYZE
 SELECT c.name, p.category, SUM(o.quantity) as total_qty
-FROM nce_orders o
-JOIN nce_customers c ON o.customer_id = c.id
-JOIN nce_products p ON o.product_id = p.id
+FROM orders o
+JOIN customers c ON o.customer_id = c.id
+JOIN products p ON o.product_id = p.id
 WHERE o.order_date BETWEEN CURRENT_DATE - 180 AND CURRENT_DATE
 AND p.price > 100
 GROUP BY c.name, p.category
@@ -158,10 +158,10 @@ HAVING SUM(o.quantity) > 5;
 
 -- Run again for more learning samples
 EXPLAIN ANALYZE 
-SELECT c.name, o.total_price FROM nce_orders o JOIN nce_customers c ON o.customer_id = c.id WHERE o.total_price > 500;
+SELECT c.name, o.total_price FROM orders o JOIN customers c ON o.customer_id = c.id WHERE o.total_price > 500;
 
 EXPLAIN ANALYZE
-SELECT p.category, AVG(o.total_price) FROM nce_orders o JOIN nce_products p ON o.product_id = p.id GROUP BY p.category;
+SELECT p.category, AVG(o.total_price) FROM orders o JOIN products p ON o.product_id = p.id GROUP BY p.category;
 EOF
 echo "✅ Test queries executed"
 

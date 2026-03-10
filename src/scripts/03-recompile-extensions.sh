@@ -103,9 +103,41 @@ sleep 2
 if [[ "$SKIP_POSTGRES" == "false" ]]; then
     echo ""
     echo "🔨 Recompiling PostgreSQL..."
+    
+    # Temporarily remove AQO symlink to avoid path issues during make clean
+    AQO_SYMLINK_TARGET=""
+    if [[ -L "$AQO_CONTRIB_LINK" ]]; then
+        AQO_SYMLINK_TARGET=$(readlink "$AQO_CONTRIB_LINK")
+        echo "   Temporarily removing AQO symlink during PostgreSQL build..."
+        rm -f "$AQO_CONTRIB_LINK"
+    fi
+    
+    # Create minimal stub for make clean (since patch added aqo to SUBDIRS)
+    if [[ ! -d "$AQO_CONTRIB_LINK" ]]; then
+        mkdir -p "$AQO_CONTRIB_LINK"
+        cat > "$AQO_CONTRIB_LINK/Makefile" << 'EOF'
+# Stub Makefile for make clean
+all:
+clean:
+install:
+.PHONY: all clean install
+EOF
+    fi
+    
     make clean
+    
+    # Remove stub directory after clean
+    rm -rf "$AQO_CONTRIB_LINK"
+    
     make -j$(nproc)
     sudo make install
+    
+    # Restore AQO symlink
+    if [[ -n "$AQO_SYMLINK_TARGET" ]]; then
+        echo "   Restoring AQO symlink..."
+        ln -sfn "$AQO_SYMLINK_TARGET" "$AQO_CONTRIB_LINK"
+    fi
+    
     echo "✅ PostgreSQL recompiled and installed"
 else
     echo ""
