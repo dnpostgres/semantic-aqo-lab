@@ -17,8 +17,7 @@ POSTGRES_VERSION=15
 POSTGRES_BIN=/usr/local/pgsql/bin
 AQO_REPO_DIR="$WORKSPACE_DIR/semantic-aqo-main"
 AQO_REPO_URL="https://github.com/vietrion-lab/semantic-aqo-main.git"
-# AQO_BRANCH="stable${POSTGRES_VERSION}"
-AQO_BRANCH="feat/ingestion-token-embeddings-table"
+AQO_BRANCH="stable${POSTGRES_VERSION}"
 
 
 
