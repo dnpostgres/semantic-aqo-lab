@@ -3,11 +3,14 @@ set -euo pipefail
 
 # Recompile PostgreSQL and AQO extension after source code updates
 # Use this script when you modify files in contrib/aqo folder
+# Note: contrib/aqo is a symlink to semantic-aqo-main/extension/
 
 WORKSPACE_DIR=/workspaces/app
 POSTGRES_DIR=postgresql-15.15
 POSTGRES_BIN=/usr/local/pgsql/bin
 POSTGRES_DATA=/usr/local/pgsql/data
+AQO_REPO_DIR="$WORKSPACE_DIR/semantic-aqo-main"
+AQO_CONTRIB_LINK="$WORKSPACE_DIR/$POSTGRES_DIR/contrib/aqo"
 
 # Parse command line arguments
 SKIP_POSTGRES=false
@@ -63,9 +66,18 @@ if [[ ! -d "$POSTGRES_DIR" ]]; then
     exit 1
 fi
 
-if [[ ! -d "$POSTGRES_DIR/contrib/aqo" ]]; then
-    echo "❌ AQO extension folder not found: $WORKSPACE_DIR/$POSTGRES_DIR/contrib/aqo" >&2
+# Check for AQO extension (support both symlink and directory)
+if [[ ! -e "$AQO_CONTRIB_LINK" ]]; then
+    echo "❌ AQO extension not found: $AQO_CONTRIB_LINK" >&2
     echo "   Run 02-semantic-aqo-clone-and-build.sh first to set up AQO"
+    exit 1
+fi
+
+# Verify symlink is valid (if it's a symlink)
+if [[ -L "$AQO_CONTRIB_LINK" && ! -e "$AQO_CONTRIB_LINK" ]]; then
+    echo "❌ AQO symlink is broken: $AQO_CONTRIB_LINK" >&2
+    echo "   Target: $(readlink "$AQO_CONTRIB_LINK")"
+    echo "   Run 02-semantic-aqo-clone-and-build.sh to fix"
     exit 1
 fi
 
@@ -73,6 +85,13 @@ cd "$POSTGRES_DIR"
 
 echo ""
 echo "==== Recompiling PostgreSQL and AQO Extension ===="
+
+# Show AQO source location
+if [[ -L "$AQO_CONTRIB_LINK" ]]; then
+    echo "📁 AQO source: $(readlink "$AQO_CONTRIB_LINK") (symlink)"
+else
+    echo "📁 AQO source: $AQO_CONTRIB_LINK"
+fi
 echo ""
 
 # Stop PostgreSQL server before recompiling
@@ -129,10 +148,12 @@ fi
 # Recompile AQO extension
 echo ""
 echo "🔨 Recompiling AQO extension..."
-cd contrib/aqo
-make clean
-make
-sudo make install
+
+# Build from extension directory with explicit top_builddir path
+cd "$AQO_REPO_DIR/extension"
+make top_builddir="$WORKSPACE_DIR/$POSTGRES_DIR" clean
+make top_builddir="$WORKSPACE_DIR/$POSTGRES_DIR"
+sudo make top_builddir="$WORKSPACE_DIR/$POSTGRES_DIR" install
 echo "✅ AQO extension recompiled and installed"
 
 # Run AQO tests (if not skipped)
@@ -143,7 +164,7 @@ if [[ "$SKIP_TESTS" == "false" ]]; then
     export LC_ALL=C.UTF-8
     umask 0077
     rm -rf tmp_check 2>/dev/null || true
-    make check 2>&1 || echo "⚠️  Tests may have failed due to permission issues, but AQO extension is installed."
+    make top_builddir="$WORKSPACE_DIR/$POSTGRES_DIR" check 2>&1 || echo "⚠️  Tests may have failed due to permission issues, but AQO extension is installed."
 else
     echo ""
     echo "⏭️  Skipping AQO tests (--skip-tests mode)"
@@ -163,4 +184,11 @@ echo "$VERIFY"
 
 echo ""
 echo "==== ✅ Recompile Complete ===="
+
+# Show git status hint if using symlink setup
+if [[ -L "$AQO_CONTRIB_LINK" ]]; then
+    echo ""
+    echo "📁 To commit your changes:"
+    echo "   cd $AQO_REPO_DIR && git status"
+fi
 echo ""
