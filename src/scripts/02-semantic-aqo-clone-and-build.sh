@@ -19,7 +19,7 @@ POSTGRES_VERSION=15
 POSTGRES_BIN=/usr/local/pgsql/bin
 AQO_REPO_DIR="$WORKSPACE_DIR/semantic-aqo-main"
 AQO_REPO_URL="https://github.com/vietrion-lab/semantic-aqo-main.git"
-AQO_BRANCH="task28_29"
+AQO_BRANCH="stable15"
 
 
 
