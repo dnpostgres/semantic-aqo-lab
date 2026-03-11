@@ -131,15 +131,15 @@ echo "📊 Table: aqo_data (Feature space data)"
 echo "----------------------------------------------"
 $PSQL $DB -c "
 SELECT 
-    fs,
-    fss,
+    space_hash,
     nfeatures,
-    ARRAY_LENGTH(features, 1) as features_count,
-    ARRAY_LENGTH(targets, 1) as targets_count
+    ARRAY_LENGTH(features, 1) as rows_count,
+    LEFT(targets::text, 60) as targets,
+    oids
 FROM aqo_data 
-ORDER BY fs 
+ORDER BY space_hash 
 LIMIT $LIMIT;
-" 2>/dev/null || echo "(No data in aqo_data yet)"
+"
 
 echo ""
 echo "📊 Summary Statistics"

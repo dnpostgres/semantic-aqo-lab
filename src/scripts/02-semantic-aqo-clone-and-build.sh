@@ -128,23 +128,6 @@ make top_builddir="$WORKSPACE_DIR/$POSTGRES_DIR"
 sudo make top_builddir="$WORKSPACE_DIR/$POSTGRES_DIR" install
 echo "✅ AQO extension built and installed"
 
-# ===== Step 5.5: Initialize token_embeddings table =====
-echo ""
-echo "📊 Step 5.5: Initializing token_embeddings table..."
-
-# Ensure PostgreSQL is running
-if ! sudo -u postgres "$POSTGRES_BIN/pg_ctl" -D /usr/local/pgsql/data status > /dev/null 2>&1; then
-	sudo -u postgres "$POSTGRES_BIN/pg_ctl" -D /usr/local/pgsql/data -l /usr/local/pgsql/data/logfile start
-	sleep 3
-fi
-
-# Ensure the test database exists
-sudo -u postgres "$POSTGRES_BIN/psql" -c "SELECT 1 FROM pg_database WHERE datname='test'" \
-	| grep -q 1 || sudo -u postgres "$POSTGRES_BIN/createdb" test
-
-python3 "$SCRIPTS_DIR/load-token-embeddings.py"
-echo "✅ token_embeddings table initialized"
-
 # ===== Step 6: Run AQO regression tests =====
 echo ""
 echo "🧪 Step 6: Running AQO regression tests..."
@@ -173,7 +156,8 @@ fi
 echo ""
 echo "⚙️  Step 7: Configuring PostgreSQL to load AQO on startup..."
 
-# Stop PostgreSQL firstsudo -u postgres "$POSTGRES_BIN/pg_ctl" -D /usr/local/pgsql/data stop 2>/dev/null || true
+# Stop PostgreSQL first
+sudo -u postgres "$POSTGRES_BIN/pg_ctl" -D /usr/local/pgsql/data stop 2>/dev/null || true
 sleep 2
 
 # Add AQO to shared_preload_libraries in postgresql.conf
@@ -203,8 +187,31 @@ echo "✅ PostgreSQL server started"
 
 echo ""
 echo "📦 Creating AQO extension in test database..."
-RESULT=$(sudo -u postgres "$POSTGRES_BIN/psql" test -c "CREATE EXTENSION IF NOT EXISTS aqo;" 2>&1)
-echo "$RESULT"
+
+# Drop any standalone tables that conflict with extension ownership
+sudo -u postgres "$POSTGRES_BIN/psql" test -c "
+    DROP TABLE IF EXISTS token_embeddings CASCADE;
+    DROP TABLE IF EXISTS aqo_queries CASCADE;
+    DROP TABLE IF EXISTS aqo_query_texts CASCADE;
+    DROP TABLE IF EXISTS aqo_query_stat CASCADE;
+    DROP TABLE IF EXISTS aqo_data CASCADE;
+    DROP TABLE IF EXISTS aqo_node_context CASCADE;
+" 2>/dev/null || true
+
+# Check if extension already exists
+EXT_EXISTS=$(sudo -u postgres "$POSTGRES_BIN/psql" test -tAc "SELECT COUNT(*) FROM pg_extension WHERE extname = 'aqo';" 2>/dev/null || echo "0")
+if [[ "$EXT_EXISTS" -ge 1 ]]; then
+    echo "   AQO extension already installed"
+else
+    sudo -u postgres "$POSTGRES_BIN/psql" test -c "CREATE EXTENSION aqo;"
+    echo "   ✅ AQO extension created"
+fi
+
+# ===== Step 8.5: Load token embeddings =====
+echo ""
+echo "📊 Step 8.5: Loading token embeddings into database..."
+python3 "$SCRIPTS_DIR/load-token-embeddings.py"
+echo "✅ Token embeddings loaded"
 
 # ===== Step 9: Verify installation =====
 echo ""
