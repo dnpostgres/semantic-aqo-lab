@@ -81,17 +81,29 @@ def run_sql(cfg, sql):
 
 
 def create_table(cfg):
-    """Create the token_embeddings table (drop if exists)."""
-    ddl = """
-DROP TABLE IF EXISTS token_embeddings;
+    """Truncate token_embeddings table if it exists and belongs to the aqo extension,
+    or create it standalone if the extension is not installed."""
+    # Check if table already exists (owned by extension or standalone)
+    check_sql = "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='token_embeddings' AND table_schema='public';"
+    env, args = build_psql_env(cfg)
+    result = subprocess.run(args + ['-t', '-c', check_sql], env=env, capture_output=True, text=True)
+    table_exists = result.returncode == 0 and result.stdout.strip() == '1'
+
+    if table_exists:
+        # Table exists (likely owned by aqo extension) — just truncate it
+        print("Truncating existing token_embeddings table...")
+        run_sql(cfg, "TRUNCATE token_embeddings;")
+    else:
+        # Standalone table creation (no extension)
+        print("Creating table token_embeddings...")
+        ddl = """
 CREATE TABLE token_embeddings (
     id          SERIAL PRIMARY KEY,
     token       TEXT NOT NULL UNIQUE,
     embedding   REAL[] NOT NULL
 );
 """
-    print("Creating table token_embeddings...")
-    run_sql(cfg, ddl)
+        run_sql(cfg, ddl)
     print("  Done.")
 
 
@@ -136,7 +148,7 @@ def main():
         sys.exit(1)
 
     cfg = load_config()
-    models_dir = os.path.normpath(os.path.join(SCRIPT_DIR, '..', cfg['models_dir']))
+    models_dir = os.path.normpath(os.path.join(SCRIPT_DIR, cfg['models_dir']))
     bin_path = os.path.join(models_dir, 'sense_embeddings.bin')
 
     if not os.path.exists(bin_path):
