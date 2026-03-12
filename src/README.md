@@ -47,16 +47,11 @@ A research project extending PostgreSQL's query optimizer with **semantic unders
 ├── experiment/                 # Benchmarking framework
 │   ├── runner.py               # Python experiment engine
 │   ├── analyze.py              # Figure generation (matplotlib)
-│   ├── config.sh               # Shared configuration
-│   ├── lib/bench_runner.sh     # Bash wrapper for runner.py
-│   ├── tpch/                   # TPC-H benchmark (22 templates × 20 seeds)
-│   │   ├── queries/            # Generated & validated query files
-│   │   ├── test_queries/       # 3 simple queries for quick testing
-│   │   └── results/            # Timestamped experiment results
-│   └── tpcds/                  # TPC-DS benchmark (99 templates × 20 seeds)
-│       ├── queries/            # Generated & validated query files
-│       ├── test_queries/       # 3 simple queries for quick testing
-│       └── results/            # Timestamped experiment results
+│   ├── config.sh               # Optional env overrides
+│   ├── tpch/                   # TPC-H benchmark (standalone run.sh)
+│   ├── tpcds/                  # TPC-DS benchmark (standalone run.sh)
+│   ├── job/                    # JOB / IMDB benchmark (standalone run.sh)
+│   └── stats/                  # STATS-CEB benchmark (standalone run.sh)
 ├── scripts/                    # Setup & automation
 │   ├── setup-all.sh            # One-command full setup (runs 00-02)
 │   ├── 00-system-setup.sh      # Install OS dependencies

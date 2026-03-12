@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # =============================================================================
-# STATS-CEB Experiment Runner
+# STATS-CEB Experiment Runner  (standalone)
 #
 # Runs 2 modes × N iterations: no_aqo (baseline) & with_aqo (semantic AQO)
 # Results written to experiment/stats/results/<timestamp>/
+#
+# Usage:  bash experiment/stats/run.sh [iterations]
 # =============================================================================
 
 set -euo pipefail
@@ -11,7 +13,28 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EXPERIMENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-source "$EXPERIMENT_DIR/config.sh"
-source "$EXPERIMENT_DIR/lib/bench_runner.sh"
+# ── Config (override via env or CLI arg) ─────────────────────────────────
+DB="${STATS_DB:-stats}"
+BENCH="STATS"
+ITERS="${1:-${ITERATIONS:-20}}"
+QUERY_DIR="$SCRIPT_DIR/queries"
 
-run_experiment "${STATS_DB}" "$SCRIPT_DIR/queries" "STATS"
+# ── Derived paths ────────────────────────────────────────────────────────
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+RESULTS_DIR="$SCRIPT_DIR/results/${TIMESTAMP}"
+mkdir -p "$RESULTS_DIR"
+
+echo "══════════════════════════════════════════════════════════"
+echo "  ${BENCH} experiment  |  DB: ${DB}  |  Iterations: ${ITERS}"
+echo "  Results → ${RESULTS_DIR}"
+echo "══════════════════════════════════════════════════════════"
+
+/usr/bin/python3 "$EXPERIMENT_DIR/runner.py" \
+    "$DB" "$QUERY_DIR" "$RESULTS_DIR" \
+    --iterations "$ITERS"
+
+/usr/bin/python3 "$EXPERIMENT_DIR/analyze.py" \
+    "$RESULTS_DIR" --title "$BENCH"
+
+echo ""
+echo "Done. Results: $RESULTS_DIR"

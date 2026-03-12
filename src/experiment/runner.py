@@ -28,7 +28,6 @@ from pathlib import Path
 
 PSQL = os.environ.get("PSQL", "sudo -u postgres /usr/local/pgsql/bin/psql")
 AQO_JOIN_THRESHOLD = int(os.environ.get("AQO_JOIN_THRESHOLD", "0"))
-AQO_PARALLEL_WORKERS = int(os.environ.get("AQO_PARALLEL_WORKERS", "0"))
 
 
 def run_psql(db, sql):
@@ -123,15 +122,17 @@ def run_phase(db, queries, results_dir, mode, iterations):
     csv_path = os.path.join(results_dir, f"{mode}_results.csv")
 
     # Build GUC preamble
+    # NOTE: max_parallel_workers_per_gather is NOT overridden here.
+    # AQO is fully parallel-safe: planning (SPI/embedding lookup) runs in the
+    # leader only; parallel workers receive a serialized plan and never invoke
+    # AQO hooks.  Both phases use the server default so comparison is fair.
     if mode == "no_aqo":
         guc = "SET aqo.mode = 'disabled';\n"
         guc += "SET aqo.force_collect_stat = 'on';\n"
-        guc += f"SET max_parallel_workers_per_gather = {AQO_PARALLEL_WORKERS};\n"
     else:
         guc = "SET aqo.mode = 'learn';\n"
         guc += f"SET aqo.join_threshold = {AQO_JOIN_THRESHOLD};\n"
         guc += "SET aqo.force_collect_stat = 'on';\n"
-        guc += f"SET max_parallel_workers_per_gather = {AQO_PARALLEL_WORKERS};\n"
 
     print(f"\n{'━'*60}")
     print(f"  Phase: {mode.upper()}  |  DB: {db}  |  Iterations: {iterations}")

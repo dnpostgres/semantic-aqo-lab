@@ -3,13 +3,12 @@
 # run-experiment.sh — Full AQO Experiment Pipeline
 #
 # Controls the entire flow:
-#   1. Ensure databases exist (load TPC-H / TPC-DS if needed)
-#   2. Run TPC-H experiment (no_aqo vs with_aqo, 20 iterations each)
-#   3. Run TPC-DS experiment (no_aqo vs with_aqo, 20 iterations each)
-#   4. Figures are auto-generated per benchmark
+#   1. Ensure databases exist (load if needed)
+#   2. Run selected benchmarks (no_aqo vs with_aqo, 20 iterations each)
+#   3. Figures are auto-generated per benchmark
 #
 # Usage:
-#   ./scripts/run-experiment.sh [--tpch-only | --tpcds-only] [--skip-load]
+#   ./scripts/run-experiment.sh [--tpch-only | --tpcds-only | --job-only | --stats-only] [--skip-load]
 # =============================================================================
 
 set -euo pipefail
@@ -23,19 +22,25 @@ source "$EXPERIMENT_DIR/config.sh"
 # ── Parse arguments ──────────────────────────────────────────────────────────
 RUN_TPCH=true
 RUN_TPCDS=true
+RUN_JOB=true
+RUN_STATS=true
 SKIP_LOAD=false
 
 for arg in "$@"; do
     case "$arg" in
-        --tpch-only)   RUN_TPCDS=false ;;
-        --tpcds-only)  RUN_TPCH=false ;;
+        --tpch-only)   RUN_TPCDS=false; RUN_JOB=false; RUN_STATS=false ;;
+        --tpcds-only)  RUN_TPCH=false;  RUN_JOB=false; RUN_STATS=false ;;
+        --job-only)    RUN_TPCH=false;  RUN_TPCDS=false; RUN_STATS=false ;;
+        --stats-only)  RUN_TPCH=false;  RUN_TPCDS=false; RUN_JOB=false ;;
         --skip-load)   SKIP_LOAD=true ;;
         --help|-h)
-            echo "Usage: $0 [--tpch-only | --tpcds-only] [--skip-load]"
+            echo "Usage: $0 [--tpch-only | --tpcds-only | --job-only | --stats-only] [--skip-load]"
             echo ""
             echo "Options:"
             echo "  --tpch-only    Run only TPC-H benchmark"
             echo "  --tpcds-only   Run only TPC-DS benchmark"
+            echo "  --job-only     Run only JOB (IMDB) benchmark"
+            echo "  --stats-only   Run only STATS-CEB benchmark"
             echo "  --skip-load    Skip database loading (assume DBs exist)"
             exit 0
             ;;
@@ -51,6 +56,8 @@ echo "║         AQO Full Experiment Pipeline                     ║"
 echo "║                                                          ║"
 echo "║  TPC-H  : $([ "$RUN_TPCH" = true ] && echo "YES" || echo "SKIP")"
 echo "║  TPC-DS : $([ "$RUN_TPCDS" = true ] && echo "YES" || echo "SKIP")"
+echo "║  JOB    : $([ "$RUN_JOB" = true ] && echo "YES" || echo "SKIP")"
+echo "║  STATS  : $([ "$RUN_STATS" = true ] && echo "YES" || echo "SKIP")"
 echo "║  Iters  : $ITERATIONS per mode"
 echo "║  Skip DB: $([ "$SKIP_LOAD" = true ] && echo "YES" || echo "NO")"
 echo "╚═══════════════════════════════════════════════════════════╝"
@@ -87,6 +94,30 @@ if [ "$SKIP_LOAD" = false ]; then
     elif [ "$RUN_TPCDS" = true ]; then
         echo "  TPC-DS database '$TPCDS_DB' already exists."
     fi
+
+    if [ "$RUN_JOB" = true ] && ! db_exists "$JOB_DB"; then
+        echo "  Loading JOB (IMDB) database..."
+        if [ -f "$SCRIPTS_DIR/databases/03-setup-job-imdb.sh" ]; then
+            bash "$SCRIPTS_DIR/databases/03-setup-job-imdb.sh"
+        else
+            echo "  ERROR: $SCRIPTS_DIR/databases/03-setup-job-imdb.sh not found"
+            exit 1
+        fi
+    elif [ "$RUN_JOB" = true ]; then
+        echo "  JOB database '$JOB_DB' already exists."
+    fi
+
+    if [ "$RUN_STATS" = true ] && ! db_exists "$STATS_DB"; then
+        echo "  Loading STATS database..."
+        if [ -f "$SCRIPTS_DIR/databases/04-setup-stats.sh" ]; then
+            bash "$SCRIPTS_DIR/databases/04-setup-stats.sh"
+        else
+            echo "  ERROR: $SCRIPTS_DIR/databases/04-setup-stats.sh not found"
+            exit 1
+        fi
+    elif [ "$RUN_STATS" = true ]; then
+        echo "  STATS database '$STATS_DB' already exists."
+    fi
 else
     echo ""
     echo "━━━ Step 1: Database Setup — SKIPPED ━━━"
@@ -103,6 +134,18 @@ if [ "$RUN_TPCDS" = true ]; then
     echo ""
     echo "━━━ Step 3: TPC-DS Benchmark ━━━"
     bash "$EXPERIMENT_DIR/tpcds/run.sh"
+fi
+
+if [ "$RUN_JOB" = true ]; then
+    echo ""
+    echo "━━━ Step 4: JOB (IMDB) Benchmark ━━━"
+    bash "$EXPERIMENT_DIR/job/run.sh"
+fi
+
+if [ "$RUN_STATS" = true ]; then
+    echo ""
+    echo "━━━ Step 5: STATS-CEB Benchmark ━━━"
+    bash "$EXPERIMENT_DIR/stats/run.sh"
 fi
 
 echo ""
