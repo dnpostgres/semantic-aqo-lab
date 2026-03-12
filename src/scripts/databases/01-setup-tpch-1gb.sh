@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
 DB="tpch"
 WORK_DIR="/tmp/tpch-build"
 DATA_DIR="/tmp/tpch-data"
@@ -147,6 +150,66 @@ done
 echo "11. Analyze tables"
 
 $PSQL $DB -c "ANALYZE;"
+
+echo "12. Generate query seeds (all templates x 20 seeds)"
+
+QUERY_DIR="$REPO_ROOT/experiment/tpch/queries"
+mkdir -p "$QUERY_DIR"
+
+# 20 diverse random seeds
+SEEDS=(42 17 99 7 1337 2024 55 123 456 789 321 654 987 111 222 333 444 555 666 777)
+
+# All 22 TPC-H query templates
+for tmpl in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22; do
+    for seed in "${SEEDS[@]}"; do
+        fname="q$(printf '%02d' "$tmpl")_s${seed}.sql"
+        (
+            cd "$WORK_DIR"
+            DSS_QUERY=./queries ./qgen -s 1 -r "$seed" "$tmpl" 2>/dev/null
+        ) \
+        | grep -v "^--" \
+        | grep -v "^where rownum" \
+        | sed "s/interval '\([0-9]*\)' day ([0-9]\+)/interval '\1 days'/g" \
+        | sed '/^[[:space:]]*$/d' \
+        > "$QUERY_DIR/$fname"
+    done
+    echo "  Q$tmpl done (${#SEEDS[@]} variants)"
+done
+
+echo "  Generated $(ls "$QUERY_DIR" | wc -l) query files in $QUERY_DIR"
+
+echo "13. Validate queries (drop errors and queries > 10 min)"
+
+_valid=0; _err=0; _slow=0
+_total=$(ls "$QUERY_DIR"/*.sql 2>/dev/null | wc -l)
+_i=0
+for _qfile in "$QUERY_DIR"/*.sql; do
+    [ -f "$_qfile" ] || continue
+    _i=$((_i+1))
+    _qname=$(basename "$_qfile")
+    printf "  [%d/%d] %-36s" "$_i" "$_total" "$_qname"
+
+    _out=$(timeout 600 $PSQL -d "$DB" -v ON_ERROR_STOP=1 -X -q -f "$_qfile" 2>&1)
+    _rc=$?
+
+    if [ $_rc -eq 0 ]; then
+        echo "OK"
+        _valid=$((_valid+1))
+    elif [ $_rc -eq 124 ]; then
+        echo "REMOVED (timeout >10min)"
+        rm -f "$_qfile"
+        _slow=$((_slow+1))
+    else
+        _reason=$(echo "$_out" | grep -i 'error' | head -1 | cut -c1-80)
+        echo "REMOVED (${_reason})"
+        rm -f "$_qfile"
+        _err=$((_err+1))
+    fi
+done
+
+echo ""
+echo "  Kept: $_valid | Removed (error): $_err | Removed (timeout): $_slow"
+echo "  Final query count: $(ls \"$QUERY_DIR\" | wc -l)"
 
 echo ""
 echo "=================================="

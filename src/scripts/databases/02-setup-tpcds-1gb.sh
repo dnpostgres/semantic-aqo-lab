@@ -1,6 +1,9 @@
 ﻿#!/usr/bin/env bash
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
 DB="tpcds"
 WORK_DIR="/tmp/tpcds-build"
 DATA_DIR="/tmp/tpcds-data"
@@ -68,6 +71,75 @@ done
 
 echo "11. Analyze tables"
 $PSQL $DB -c "ANALYZE;"
+
+echo "12. Generate query seeds (all templates x 20 seeds)"
+
+QUERY_DIR="$REPO_ROOT/experiment/tpcds/queries"
+mkdir -p "$QUERY_DIR"
+
+# 20 diverse random seeds
+SEEDS=(42 17 99 7 1337 2024 55 123 456 789 321 654 987 111 222 333 444 555 666 777)
+
+# dsqgen is built into $WORK_DIR/tools/ during step 5 above
+for tpl in "$WORK_DIR"/query_templates/query[0-9]*.tpl; do
+    [ -f "$tpl" ] || continue
+    qbase=$(basename "$tpl" .tpl)
+    qnum="${qbase#query}"
+    # skip non-numeric variants (e.g. 14a, 23a, 39a — included via their main template)
+    [[ "$qnum" =~ ^[0-9]+$ ]] || continue
+    for seed in "${SEEDS[@]}"; do
+        fname="q$(printf '%02d' "$qnum")_s${seed}.sql"
+        (
+            cd "$WORK_DIR/tools"
+            ./dsqgen \
+                -template "../query_templates/${qbase}.tpl" \
+                -directory ../query_templates \
+                -rngseed "$seed" \
+                -scale "$SCALE" \
+                -dialect netezza \
+                -filter Y \
+                2>/dev/null
+        ) | grep -v "^-- " > "$QUERY_DIR/$fname" || true
+        # remove empty files (template failed to generate)
+        [ -s "$QUERY_DIR/$fname" ] || rm -f "$QUERY_DIR/$fname"
+    done
+    echo "  Q$qnum done (${#SEEDS[@]} variants)"
+done
+
+echo "  Generated $(ls "$QUERY_DIR" | wc -l) query files in $QUERY_DIR"
+
+echo "13. Validate queries (drop errors and queries > 10 min)"
+
+_valid=0; _err=0; _slow=0
+_total=$(ls "$QUERY_DIR"/*.sql 2>/dev/null | wc -l)
+_i=0
+for _qfile in "$QUERY_DIR"/*.sql; do
+    [ -f "$_qfile" ] || continue
+    _i=$((_i+1))
+    _qname=$(basename "$_qfile")
+    printf "  [%d/%d] %-36s" "$_i" "$_total" "$_qname"
+
+    _out=$(timeout 600 $PSQL -d "$DB" -v ON_ERROR_STOP=1 -X -q -f "$_qfile" 2>&1)
+    _rc=$?
+
+    if [ $_rc -eq 0 ]; then
+        echo "OK"
+        _valid=$((_valid+1))
+    elif [ $_rc -eq 124 ]; then
+        echo "REMOVED (timeout >10min)"
+        rm -f "$_qfile"
+        _slow=$((_slow+1))
+    else
+        _reason=$(echo "$_out" | grep -i 'error' | head -1 | cut -c1-80)
+        echo "REMOVED (${_reason})"
+        rm -f "$_qfile"
+        _err=$((_err+1))
+    fi
+done
+
+echo ""
+echo "  Kept: $_valid | Removed (error): $_err | Removed (timeout): $_slow"
+echo "  Final query count: $(ls \"$QUERY_DIR\" | wc -l)"
 
 echo ""
 echo "=================================="
