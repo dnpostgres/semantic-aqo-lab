@@ -129,20 +129,22 @@ for _qfile in "$TMPQUERY_DIR"/*.sql; do
 
     # Redirect stdout to /dev/null — only capture stderr for error diagnosis
     _stderr_file=$(mktemp)
-    timeout 60 $PSQL -d "$DB" -v ON_ERROR_STOP=1 -X -q -f "$_qfile" \
+    _t0=$SECONDS
+    sudo -u postgres timeout 60 /usr/local/pgsql/bin/psql -d "$DB" -v ON_ERROR_STOP=1 -X -q -f "$_qfile" \
         > /dev/null 2>"$_stderr_file"
     _rc=$?
+    _elapsed=$(( SECONDS - _t0 ))
 
     if [ $_rc -eq 0 ]; then
-        echo "OK"
+        printf "OK          %3ds\n" "$_elapsed"
         cp "$_qfile" "$QUERY_DIR/$_qname"
         _valid=$((_valid+1))
     elif [ $_rc -eq 124 ]; then
-        echo "SKIP (timeout >60s)"
+        printf "SKIP (>60s) %3ds\n" "$_elapsed"
         _slow=$((_slow+1))
     else
-        _reason=$(grep -i 'error' "$_stderr_file" | head -1 | cut -c1-80)
-        echo "SKIP (${_reason})"
+        _reason=$(grep -i 'error' "$_stderr_file" | head -1 | cut -c1-60)
+        printf "SKIP %-20s %3ds\n" "(${_reason})" "$_elapsed"
         _err=$((_err+1))
     fi
     rm -f "$_stderr_file"
