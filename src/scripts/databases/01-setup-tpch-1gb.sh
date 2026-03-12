@@ -184,19 +184,37 @@ _generated=$(ls "$TMPQUERY_DIR"/*.sql 2>/dev/null | wc -l)
 chmod 644 "$TMPQUERY_DIR"/*.sql 2>/dev/null || true
 echo "  Generated $_generated query files → validating in temp dir"
 
-echo "13. Validate queries (drop errors and queries > 60s)"
-echo "    (60s timeout per query — standard for SF=1 industry benchmarks)"
+echo "13. Validate queries (drop errors and queries > 55s)"
+echo "    (55s statement_timeout + 60s hard kill)"
 
-# NOTE: stdout is redirected to /dev/null during validation to avoid
-# capturing huge result sets in bash variables (which caused OOM crashes).
-# Only stderr is captured for error messages.
-_valid=0; _err=0; _slow=0
+CHECKPOINT_FILE="$QUERY_DIR/.checkpoint"
+
+# Load checkpoint — skip previously validated queries
+declare -A _done
+if [ -f "$CHECKPOINT_FILE" ]; then
+    while IFS= read -r line; do
+        _done["$line"]=1
+    done < "$CHECKPOINT_FILE"
+    echo "  Resuming from checkpoint (${#_done[@]} queries already processed)"
+fi
+
+_valid=0; _err=0; _slow=0; _skip=0
 _total=$(ls "$TMPQUERY_DIR"/*.sql 2>/dev/null | wc -l)
 _i=0
 for _qfile in "$TMPQUERY_DIR"/*.sql; do
     [ -f "$_qfile" ] || continue
     _i=$((_i+1))
     _qname=$(basename "$_qfile")
+
+    # Checkpoint: skip already-processed queries
+    if [[ -v "_done[$_qname]" ]]; then
+        _skip=$((_skip+1))
+        if [ -f "$QUERY_DIR/$_qname" ]; then
+            _valid=$((_valid+1))
+        fi
+        continue
+    fi
+
     printf "  [%d/%d] %-36s" "$_i" "$_total" "$_qname"
 
     # Two-layer timeout protection:
@@ -204,16 +222,14 @@ for _qfile in "$TMPQUERY_DIR"/*.sql; do
     #   Layer 2: timeout --kill-after=5 (60s SIGTERM, 65s SIGKILL) — hard kill fallback
     _stderr_file=$(mktemp)
     _t0=$SECONDS
+    _rc=0
     sudo -u postgres timeout --kill-after=5 60 \
         /usr/local/pgsql/bin/psql -d "$DB" -v ON_ERROR_STOP=1 -X -q \
         -c "SET statement_timeout = '55s';" \
         -f "$_qfile" \
-        > /dev/null 2>"$_stderr_file"
-    _rc=$?
+        > /dev/null 2>"$_stderr_file" || _rc=$?
     _elapsed=$(( SECONDS - _t0 ))
 
-    # rc=124: timeout SIGTERM, rc=137: timeout SIGKILL
-    # Also check stderr for statement_timeout cancellation
     if [ $_rc -eq 0 ]; then
         printf "OK          %3ds\n" "$_elapsed"
         cp "$_qfile" "$QUERY_DIR/$_qname"
@@ -227,10 +243,18 @@ for _qfile in "$TMPQUERY_DIR"/*.sql; do
         _err=$((_err+1))
     fi
     rm -f "$_stderr_file"
+
+    # Record to checkpoint
+    echo "$_qname" >> "$CHECKPOINT_FILE"
 done
 
 rm -rf "$TMPQUERY_DIR"
+# Clean up checkpoint when all done
+rm -f "$CHECKPOINT_FILE"
 
+if [ $_skip -gt 0 ]; then
+    echo "  (skipped $_skip previously validated queries)"
+fi
 echo ""
 echo "  Kept: $_valid | Skipped (error): $_err | Skipped (timeout): $_slow"
 echo "  Final query count: $(ls "$QUERY_DIR"/*.sql 2>/dev/null | wc -l)"

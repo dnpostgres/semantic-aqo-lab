@@ -10,6 +10,8 @@ export PGDATA="/usr/local/pgsql/data"
 # Databases
 export TPCH_DB="tpch"
 export TPCDS_DB="tpcds"
+export JOB_DB="imdb"
+export STATS_DB="stats"
 
 # Iterations — both modes run this many times
 export ITERATIONS=20
