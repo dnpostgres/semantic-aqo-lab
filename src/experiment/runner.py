@@ -39,7 +39,7 @@ def run_psql(db, sql):
     """Execute SQL via psql, return stdout."""
     parts = PSQL.split()
     cmd = parts + ["-d", db, "-t", "-A", "-c", sql]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    result = subprocess.run(cmd, capture_output=True, text=True)
     return result.returncode, result.stdout, result.stderr
 
 
@@ -47,7 +47,7 @@ def run_psql_file(db, filepath):
     """Execute a SQL file via psql, return stdout."""
     parts = PSQL.split()
     cmd = parts + ["-d", db, "-t", "-A", "-f", filepath]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    result = subprocess.run(cmd, capture_output=True, text=True)
     return result.returncode, result.stdout, result.stderr
 
 
