@@ -16,12 +16,21 @@ EXPERIMENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # ── Config (override via env or CLI arg) ─────────────────────────────────
 DB="${JOB_DB:-imdb}"
 BENCH="JOB"
-ITERS="${1:-${ITERATIONS:-20}}"
+# ── Parse args ───────────────────────────────────────────────────────────
+ITERS="${ITERATIONS:-20}"
+FORCE_FLAG=""
+for arg in "$@"; do
+    case "$arg" in
+        --force) FORCE_FLAG="--force" ;;
+        *)       ITERS="$arg" ;;
+    esac
+done
+[ -n "${FORCE:-}" ] && FORCE_FLAG="--force"
+
 QUERY_DIR="$SCRIPT_DIR/queries"
 
-# ── Derived paths ────────────────────────────────────────────────────────
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-RESULTS_DIR="$SCRIPT_DIR/results/${TIMESTAMP}"
+# ── Stable results dir (checkpoint-friendly) ─────────────────────────────
+RESULTS_DIR="$SCRIPT_DIR/results"
 mkdir -p "$RESULTS_DIR"
 
 echo "══════════════════════════════════════════════════════════"
