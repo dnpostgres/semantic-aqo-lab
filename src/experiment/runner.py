@@ -47,10 +47,10 @@ AQO_JOIN_THRESHOLD = int(os.environ.get("AQO_JOIN_THRESHOLD", "0"))
 SWITCH_AQO_SKIP = os.environ.get("SWITCH_AQO_SKIP", "0") == "1"
 
 # Auto-detect switch-aqo.sh location:
-#   - SWITCH_AQO env var override
-#   - sibling scripts/ directory next to runner.py (experiment/../scripts/)
+#   - SWITCH_AQO env var override (set by scripts/experiment/run.sh)
+#   - fallback: scripts/env/switch-aqo.sh relative to runner.py
 _runner_dir = Path(__file__).resolve().parent
-_default_switch = _runner_dir.parent / "scripts" / "switch-aqo.sh"
+_default_switch = _runner_dir.parent / "scripts" / "env" / "switch-aqo.sh"
 SWITCH_AQO = os.environ.get("SWITCH_AQO", str(_default_switch))
 
 # Which modes to run (can be overridden via --modes CLI flag)

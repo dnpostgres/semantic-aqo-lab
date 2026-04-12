@@ -1,6 +1,7 @@
 # Ignore .env files but keep example
 *.env
 !.env.example
+!src/scripts/config.env
 .claude/
 .github/
 
@@ -9,3 +10,5 @@
 *.so
 *.bc
 
+# Claude cowork files
+.claude/
